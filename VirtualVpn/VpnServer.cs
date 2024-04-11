@@ -968,6 +968,13 @@ public class VpnServer : ISessionHost, IDisposable
                 {
                     try
                     {
+                        // ReSharper disable once ConditionIsAlwaysTrueOrFalseAccordingToNullableAPIContract
+                        if (session?.State is null)
+                        {
+                            Log.Warn($"Unexpected null value in session");
+                            continue;
+                        }
+
                         if (session.State == SessionState.DELETED)
                         {
                             Log.Info("Session in deleted state, should be removed");

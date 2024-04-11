@@ -116,49 +116,73 @@ public class VpnSession
         // The EventPump() on each child is responsible for sending keep-alive messages if it is the initiator.
         // The VpnServer instance fires child session event pump separately from this one.
 
+        var initialState = State;
         switch (State)
         {
             case SessionState.ESTABLISHED:
             {
-                if (LastTouchTimer.Elapsed < Settings.EspTimeout) return;
-                
-                EndConnectionWithPeer(); // fire a DELETE message, but don't wait for reply
-            
-                Log.Critical($"Session {_localSpi:x} timed-out after establishment. Are keep-alive messages not arriving?");
-                foreach (var child in _thisSessionChildren)
+                try
                 {
-                    Log.Trace($"Removing child SA {child.Key:x}; spi-in={child.Value.SpiIn:x}, spi-out={child.Value.SpiOut:x}");
-                    _sessionHost.RemoveChildSession(child.Value.SpiIn, child.Value.SpiOut);
+                    if (LastTouchTimer.Elapsed < Settings.EspTimeout) return;
+
+                    EndConnectionWithPeer(); // fire a DELETE message, but don't wait for reply
+
+                    Log.Critical($"Session {_localSpi:x} timed-out after establishment. Are keep-alive messages not arriving?");
+                    foreach (var child in _thisSessionChildren)
+                    {
+                        Log.Trace($"Removing child SA {child.Key:x}; spi-in={child.Value.SpiIn:x}, spi-out={child.Value.SpiOut:x}");
+                        _sessionHost.RemoveChildSession(child.Value.SpiIn, child.Value.SpiOut);
+                    }
+
+                    _sessionHost.RemoveSession(wasRemoteRequest: false, _localSpi, _peerSpi);
+
+                    State = SessionState.DELETED;
+                }
+                catch (Exception ex)
+                {
+                    Log.Error($"Failure during event pump; {initialState}->{State}", ex);
                 }
 
-                _sessionHost.RemoveSession(wasRemoteRequest: false, _localSpi, _peerSpi);
-                
-                State = SessionState.DELETED;
                 break;
             }
             case SessionState.DELETED:
             {
-                Log.Info($"Removing deleted session {_localSpi:x}");
-                _sessionHost.RemoveSession(wasRemoteRequest: false, _localSpi, _peerSpi);
-
-                foreach (var child in _thisSessionChildren)
+                try
                 {
-                    Log.Trace($"Removing child SA {child.Key:x}; spi-in={child.Value.SpiIn:x}, spi-out={child.Value.SpiOut:x}");
-                    _sessionHost.RemoveChildSession(child.Value.SpiIn, child.Value.SpiOut);
-                }
+                    Log.Info($"Removing deleted session {_localSpi:x}");
+                    _sessionHost.RemoveSession(wasRemoteRequest: false, _localSpi, _peerSpi);
 
+                    foreach (var child in _thisSessionChildren)
+                    {
+                        Log.Trace($"Removing child SA {child.Key:x}; spi-in={child.Value.SpiIn:x}, spi-out={child.Value.SpiOut:x}");
+                        _sessionHost.RemoveChildSession(child.Value.SpiIn, child.Value.SpiOut);
+                    }
+
+                }
+                catch (Exception ex)
+                {
+                    Log.Error($"Failure during event pump; {initialState}->{State}", ex);
+                }
                 break;
             }
             default:
             {
-                if (LastTouchTimer.Elapsed < Settings.IkeTimeout) return;
-                
-                EndConnectionWithPeer(); // fire a DELETE message, but don't wait for reply
-            
-                Log.Critical($"Session {_localSpi:x} timed-out during negotiation (state={State.ToString()}). The session will be abandoned.");
-                _sessionHost.RemoveSession(wasRemoteRequest: false, _localSpi, _peerSpi);
-                
-                State = SessionState.DELETED;
+                try
+                {
+                    if (LastTouchTimer.Elapsed < Settings.IkeTimeout) return;
+
+                    EndConnectionWithPeer(); // fire a DELETE message, but don't wait for reply
+
+                    Log.Critical($"Session {_localSpi:x} timed-out during negotiation (state={State.ToString()}). The session will be abandoned.");
+                    _sessionHost.RemoveSession(wasRemoteRequest: false, _localSpi, _peerSpi);
+
+                    State = SessionState.DELETED;
+                }
+                catch (Exception ex)
+                {
+                    Log.Error($"Failure during event pump; {initialState}->{State}", ex);
+                }
+
                 break;
             }
         }
@@ -185,7 +209,7 @@ public class VpnSession
             new PayloadDelete(IkeProtocolType.IKE, spiList)
         );
 
-        Log.Warn($"Sending DELETE message to gateway {_lastContact.ToString()}. MsgId={_myMsgId}, localSpi={_localSpi:x16}, peerSpi={_peerSpi:x16}");
+        Log.Warn($"Sending DELETE message to gateway {_lastContact}. MsgId={_myMsgId}, localSpi={_localSpi:x16}, peerSpi={_peerSpi:x16}");
         Send(to: _lastContact, response);
         
         // Switch our mode
@@ -214,7 +238,7 @@ public class VpnSession
             new PayloadDelete(IkeProtocolType.IKE, spiList)
         );
 
-        Log.Warn($"Sending DELETE message to gateway {_lastContact.ToString()}. MsgId={_myMsgId}, localSpi={_localSpi:x16}, peerSpi={_peerSpi:x16}");
+        Log.Warn($"Sending DELETE message to gateway {_lastContact}. MsgId={_myMsgId}, localSpi={_localSpi:x16}, peerSpi={_peerSpi:x16}");
         Send(to: _lastContact, response);
         
         // Switch our mode
